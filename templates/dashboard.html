@@ -83,8 +83,8 @@
 
             <!-- Word Cloud for Follow Recommendations -->
             <div class="bg-white p-4 rounded-lg shadow">
-                <h2 class="text-xl font-semibold mb-4">Recommended Accounts</h2>
-                <div id="wordCloud" class="h-64"></div>
+                <h2 class="text-xl font-semibold mb-4">Most Seen Accounts</h2>
+                <div id="wordCloud" class="w-full  h-full"></div>
             </div>
         </div>
         <!-- Tweets Section -->
@@ -362,14 +362,33 @@
     `).join('');
 }
 
+// Word Cloud for Author Frequencies with Twitter Links
 async function createWordCloud() {
-    const response = await fetch('/api/recommendations');
-    const accounts = await response.json();
+    const response = await fetch('/api/author_frequencies');
+    const authors = await response.json();
     
-    const words = accounts.map(account => ({
-        text: account.username,
-        size: Math.random() * 30 + 10, // Random size between 10 and 40
-        url: `https://twitter.com/${account.username}` // Add URL for each username
+    // Define minimum and maximum font sizes
+    const MIN_FONT_SIZE = 12;
+    const MAX_FONT_SIZE = 36;
+    
+    // Find the min and max counts for scaling
+    const counts = authors.map(a => a.count);
+    const minCount = Math.min(...counts);
+    const maxCount = Math.max(...counts);
+    
+    // Create a scale function to map counts to font sizes
+    const fontScale = (count) => {
+        const logMin = Math.log(minCount);
+        const logMax = Math.log(maxCount);
+        const scale = (Math.log(count) - logMin) / (logMax - logMin);
+        return MIN_FONT_SIZE + scale * (MAX_FONT_SIZE - MIN_FONT_SIZE);
+    };
+    
+    const words = authors.map(author => ({
+        text: author.author,
+        size: fontScale(author.count),
+        count: author.count,
+        handle: author.author_handle || author.author.replace(/[^a-zA-Z0-9_]/g, '') // Clean handle
     }));
     
     const layout = d3.layout.cloud()
@@ -385,88 +404,78 @@ async function createWordCloud() {
     function draw(words) {
         d3.select("#wordCloud").select("svg").remove();
         
-        // Create the SVG container
         const svg = d3.select("#wordCloud")
             .append("svg")
-            .attr("width", layout.size()[0])
-            .attr("height", layout.size()[1]);
+            .attr("width", "100%")
+            .attr("height", "100%");
             
-        // Add the main group element
-        const g = svg.append("g")
+        const wordsGroup = svg.append("g")
             .attr("transform", `translate(${layout.size()[0]/2},${layout.size()[1]/2})`);
             
-        // Create groups for each word
-        const wordGroups = g.selectAll("g")
+        wordsGroup.selectAll("text")
             .data(words)
             .enter()
-            .append("g")
-            .attr("transform", d => `translate(${[d.x, d.y]})rotate(${d.rotate})`)
-            .style("cursor", "pointer");
-        
-        // Add links
-        wordGroups.append("a")
-            .attr("xlink:href", d => d.url)
-            .attr("target", "_blank")
-            .attr("rel", "noopener noreferrer")
             .append("text")
             .style("font-size", d => `${d.size}px`)
             .style("fill", (d, i) => colors[i % colors.length])
+            .style("cursor", "pointer")
+            .style("transition", "all 0.3s ease") // Smooth transitions
             .attr("text-anchor", "middle")
+            .attr("transform", d => `translate(${[d.x, d.y]})rotate(${d.rotate})`)
             .text(d => d.text)
-            .style("user-select", "none") // Prevent text selection during drag
-            .style("transition", "opacity 0.2s")
-            .style("opacity", 1)
             .on("mouseover", function() {
-                d3.select(this).style("opacity", 0.7);
+                d3.select(this)
+                    .style("opacity", 0.7)
+                    .style("text-decoration", "underline");
             })
             .on("mouseout", function() {
-                d3.select(this).style("opacity", 1);
-            });
-        
-        // Add drag behavior
-        const drag = d3.drag()
-            .on("start", dragstarted)
-            .on("drag", dragged)
-            .on("end", dragended);
-            
-        wordGroups.call(drag);
-        
-        // Drag functions
-        function dragstarted(event, d) {
-            d3.select(this).raise();
-            d3.select(this).attr("data-x", d3.select(this).attr("transform"));
-        }
-        
-        function dragged(event, d) {
-            const currentTransform = d3.select(this).attr("transform");
-            const currentRotate = currentTransform.match(/rotate\(([-\d.]+)\)/);
-            const rotation = currentRotate ? currentRotate[1] : 0;
-            
-            // Get the current group's bounding box
-            const bbox = this.getBBox();
-            
-            // Calculate bounds to keep words within SVG
-            const minX = -layout.size()[0]/2 + bbox.width/2;
-            const maxX = layout.size()[0]/2 - bbox.width/2;
-            const minY = -layout.size()[1]/2 + bbox.height/2;
-            const maxY = layout.size()[1]/2 - bbox.height/2;
-            
-            // Constrain the drag within bounds
-            const x = Math.min(maxX, Math.max(minX, event.x));
-            const y = Math.min(maxY, Math.max(minY, event.y));
-            
-            d3.select(this)
-                .attr("transform", `translate(${x},${y})rotate(${rotation})`);
-        }
-        
-        function dragended(event, d) {
-            // Optional: Add any cleanup or final positioning logic here
-        }
+                d3.select(this)
+                    .style("opacity", 1)
+                    .style("text-decoration", "none");
+            })
+            .on("click", (event, d) => {
+                try {
+                    // Clean the handle and ensure it's valid
+                    const handle = d.handle.replace(/[@\s]/g, '').trim();
+                    if (handle) {
+                        // Visual feedback on click
+                        d3.select(event.target)
+                            .style("fill", "#1DA1F2") // Twitter blue
+                            .transition()
+                            .duration(300)
+                            .style("fill", colors[words.indexOf(d) % colors.length]);
+                            
+                        // Open in new tab
+                        window.open(`https://x.com/${handle}`, '_blank');
+                    } else {
+                        console.warn(`Invalid handle for ${d.text}`);
+                    }
+                } catch (error) {
+                    console.error("Error opening profile:", error);
+                }
+            })
+            .append("title")
+            .text(d => `${d.text}\n${d.count} tweets\nClick to view profile`);
     }
 }
 
+// Start the word cloud
+createWordCloud().catch(error => {
+    console.error("Error creating word cloud:", error);
+    // Show error message in the word cloud container
+    document.getElementById("wordCloud").innerHTML = 
+        '<div class="text-red-500">Error loading word cloud. Please try refreshing.</div>';
+});
+
 // Initial word cloud creation
-createWordCloud();
+
+function startAutoRefresh() {
+    const interval = setInterval(() => {
+        updateCharts();
+    }, 30000); // Updates every 30 seconds
+    
+    return interval;
+}
     </script>
 </body>
 </html>
