@@ -117,8 +117,8 @@ class TweetAnalyzer:
 
         For each tweet provide:
         1. A brief summary (max 50 words)
-        2. The emotional tone/sentiment (one of: hateful, angry, happy, neutral, innovative, excited, sad, concerned, teaching)
-        3. A category describing the tweet's nature (e.g., news, opinion, announcement, discussion)
+        2. The emotional tone/sentiment (one of: hateful, angry, happy, neutral, innovative, excited, sad, concerned, teaching) note that just saying happy is not happy if a person is saying he is happy because someone else has a problem that is "indirect hate"
+        3. A category describing the tweet's nature (e.g., news, opinion, announcement, discussion) if possible to categorise it as woke or racist or homophobic you can add that as "racist opinion" if not give plain "opinion", also news could be aslo subclasified as "news ai" or "new sports" or "news medical"
 
         Expected JSON format:
         {{
