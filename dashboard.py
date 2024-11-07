@@ -140,7 +140,8 @@ def get_tweets():
             timestamp,
             sentiment,
             category,
-            summary
+            summary,
+            url  
         FROM tweets
         WHERE 1=1
     '''
@@ -239,6 +240,34 @@ def get_recommendations():
     conn.close()
     
     return jsonify(recommendations)
+
+@app.route('/api/stats/total_tweets')
+def get_total_tweets():
+    """Get total number of tweets in the system"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Get total tweets
+        cursor.execute('SELECT COUNT(*) as total FROM tweets')
+        result = cursor.fetchone()
+        
+        # Get tweets from last 24 hours
+        cursor.execute('''
+            SELECT COUNT(*) as recent 
+            FROM tweets 
+            WHERE timestamp >= datetime('now', '-24 hours')
+        ''')
+        recent = cursor.fetchone()
+        
+        return jsonify({
+            'total_tweets': result['total'],
+            'last_24h': recent['recent']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True, port=2001)
