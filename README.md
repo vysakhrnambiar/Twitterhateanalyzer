@@ -32,7 +32,7 @@
 
 <ol>
   <li><strong>Clone the repository:</strong>
-    <pre><code>git clone https://github.com/yourusername/Twitter-Analytics-Dashboard.git
+    <pre><code>git clone https://github.com/vysakhrnambiar/Twitter-Analytics-Dashboard.git
 cd Twitter-Analytics-Dashboard</code></pre>
   </li>
   <li><strong>Install Dependencies:</strong><br>
