@@ -241,6 +241,77 @@ def get_recommendations():
     
     return jsonify(recommendations)
 
+@app.route('/api/author_frequencies')
+def author_frequencies():
+    """Get tweet author frequencies with handles extracted from URLs"""
+    print("\n=== Starting Author Frequencies Analysis ===")
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    print("Executing database query...")
+    cursor.execute('''
+        SELECT 
+            author,
+            COUNT(*) as count,
+            (SELECT url FROM tweets t2 
+             WHERE t2.author = t1.author 
+             LIMIT 1) as sample_url
+        FROM tweets t1
+        GROUP BY author
+        HAVING count > 1
+        ORDER BY count DESC
+        LIMIT 500
+    ''')
+    
+    # Fetch rows once
+    rows = cursor.fetchall()
+    print(f"\nFound {len(rows)} authors with multiple tweets")
+    
+    results = []
+    for row in rows:  # Use the rows we already fetched
+        print(f"\nProcessing author: {row['author']}")
+        print(f"Tweet count: {row['count']}")
+        print(f"Sample URL: {row['sample_url']}")
+        
+        try:
+            url = row['sample_url']
+            if url and '/status/' in url:
+                # Split URL path and get the username part
+                parts = url.split('/')
+                if len(parts) >= 5:
+                    handle = parts[3]
+                    print(f"Extracted handle: {handle}")
+                    results.append({
+                        'author': row['author'],
+                        'author_handle': handle,
+                        'count': row['count']
+                    })
+            else:
+                print(f"Using author name as handle for: {row['author']}")
+                results.append({
+                    'author': row['author'],
+                    'author_handle': row['author'],
+                    'count': row['count']
+                })
+                
+        except Exception as e:
+            print(f"Error processing row: {row}")
+            print(f"Error details: {str(e)}")
+            results.append({
+                'author': row['author'],
+                'author_handle': row['author'],
+                'count': row['count']
+            })
+    
+    print(f"\nProcessed {len(results)} total results")
+    print("First 5 results:")
+    for r in results[:5]:
+        print(f"Author: {r['author']}, Handle: {r['author_handle']}, Count: {r['count']}")
+    
+    conn.close()
+    return jsonify(results)
+
 @app.route('/api/stats/total_tweets')
 def get_total_tweets():
     """Get total number of tweets in the system"""
