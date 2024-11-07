@@ -33,7 +33,7 @@
 <ol>
   <li><strong>Clone the repository:</strong>
     <pre><code>git clone https://github.com/vysakhrnambiar/Twitterhateanalyzer.git
-cd Twitter-Analytics-Dashboard</code></pre>
+cd Twitterhateanalyzer</code></pre>
   </li>
   <li><strong>Install Dependencies:</strong><br>
     <strong>Windows:</strong> Run <code>setup.bat</code>, which installs the necessary Python libraries and dependencies.<br>
