@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitter Analytics Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <!-- D3.js for Word Cloud -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-cloud/1.2.5/d3.layout.cloud.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <h1 class="text-3xl font-bold mb-8">Twitter Analytics Dashboard</h1>
+
+        <!-- Date Range Selection -->
+        <div class="mb-8 bg-white p-4 rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-4">Date Range Selection</h2>
+            <div class="flex gap-4">
+                <input type="date" id="startDate" class="border p-2 rounded">
+                <input type="date" id="endDate" class="border p-2 rounded">
+                <button onclick="updateCharts()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Update
+                </button>
+            </div>
+        </div>
+
+        <!-- Sentiment Analysis Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- Sentiment List -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Sentiment Distribution</h2>
+                <ul id="sentimentList" class="space-y-2"></ul>
+            </div>
+            <!-- Sentiment Chart -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Sentiment Timeline</h2>
+                <canvas id="sentimentChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Category Analysis Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- Category List -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Category Distribution</h2>
+                <ul id="categoryList" class="space-y-2"></ul>
+            </div>
+            <!-- Category Chart -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Category Timeline</h2>
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- Trends Section -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Trending Topics</h2>
+                <ul id="trendsList" class="space-y-2"></ul>
+            </div>
+
+            <!-- Word Cloud for Follow Recommendations -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Recommended Accounts</h2>
+                <div id="wordCloud" class="h-64"></div>
+            </div>
+        </div>
+
+        <!-- Tweets Section -->
+        <div class="bg-white p-4 rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-4">Recent Tweets</h2>
+            <!-- Filters -->
+            <div class="flex gap-4 mb-4">
+                <select id="sentimentFilter" class="border p-2 rounded">
+                    <option value="all">All Sentiments</option>
+                </select>
+                <select id="categoryFilter" class="border p-2 rounded">
+                    <option value="all">All Categories</option>
+                </select>
+            </div>
+            <!-- Tweets List -->
+            <div id="tweetsList" class="space-y-4"></div>
+        </div>
+    </div>
+
+    <script>
+        let sentimentChart, categoryChart;
+        const colors = [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+            '#FF9F40', '#FF6384', '#C9CBCF', '#7BC8A4', '#E8C3B9'
+        ];
+
+        // Initialize date inputs with last 30 days
+        window.onload = function() {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(start.getDate() - 30);
+            
+            document.getElementById('startDate').value = start.toISOString().split('T')[0];
+            document.getElementById('endDate').value = end.toISOString().split('T')[0];
+            
+            initializeFilters();
+            updateCharts();
+        };
+
+        async function initializeFilters() {
+            const response = await fetch('/api/filters');
+            const filters = await response.json();
+            
+            const sentimentFilter = document.getElementById('sentimentFilter');
+            const categoryFilter = document.getElementById('categoryFilter');
+            
+            filters.sentiments.forEach(sentiment => {
+                const option = new Option(sentiment, sentiment);
+                sentimentFilter.add(option);
+            });
+            
+            filters.categories.forEach(category => {
+                const option = new Option(category, category);
+                categoryFilter.add(option);
+            });
+            
+            // Add event listeners
+            sentimentFilter.onchange = updateTweets;
+            categoryFilter.onchange = updateTweets;
+            
+            // Initial tweets load
+            updateTweets();
+        }
+
+        async function updateCharts() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            await Promise.all([
+                updateSentimentData(startDate, endDate),
+                updateCategoryData(startDate, endDate),
+                updateTrends(startDate, endDate)
+            ]);
+        }
+
+        async function updateSentimentData(startDate, endDate) {
+            // Update sentiment counts
+            const countsResponse = await fetch('/api/sentiment_counts');
+            const counts = await countsResponse.json();
+            
+            const sentimentList = document.getElementById('sentimentList');
+            sentimentList.innerHTML = counts.map((item, index) => `
+                <li class="flex justify-between items-center">
+                    <span class="font-medium" style="color: ${colors[index]}">
+                        ${item.sentiment}
+                    </span>
+                    <span class="bg-gray-100 px-2 py-1 rounded">
+                        ${item.count}
+                    </span>
+                </li>
+            `).join('');
+            
+            // Update sentiment timeline chart
+            const timelineResponse = await fetch(`/api/sentiment_timeline?start_date=${startDate}&end_date=${endDate}`);
+            const timeline = await timelineResponse.json();
+            
+            const dates = [...new Set(timeline.map(item => item.date))];
+            const sentiments = [...new Set(timeline.map(item => item.sentiment))];
+            
+            const datasets = sentiments.map((sentiment, index) => ({
+                label: sentiment,
+                data: dates.map(date => {
+                    const entry = timeline.find(item => item.date === date && item.sentiment === sentiment);
+                    return entry ? entry.count : 0;
+                }),
+                backgroundColor: colors[index],
+                borderColor: colors[index],
+                fill: false
+            }));
+            
+            if (sentimentChart) sentimentChart.destroy();
+            
+            sentimentChart = new Chart(document.getElementById('sentimentChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+        }
+
+        async function updateCategoryData(startDate, endDate) {
+            // Update category counts
+            const countsResponse = await fetch('/api/category_counts');
+            const counts = await countsResponse.json();
+            
+            const categoryList = document.getElementById('categoryList');
+            categoryList.innerHTML = counts.map((item, index) => `
+                <li class="flex justify-between items-center">
+                    <span class="font-medium" style="color: ${colors[index]}">
+                        ${item.category}
+                    </span>
+                    <span class="bg-gray-100 px-2 py-1 rounded">
+                        ${item.count}
+                    </span>
+                </li>
+            `).join('');
+            
+            // Update category timeline chart
+            const timelineResponse = await fetch(`/api/category_timeline?start_date=${startDate}&end_date=${endDate}`);
+            const timeline = await timelineResponse.json();
+            
+            const dates = [...new Set(timeline.map(item => item.date))];
+            const categories = [...new Set(timeline.map(item => item.category))];
+            
+            const datasets = categories.map((category, index) => ({
+                label: category,
+                data: dates.map(date => {
+                    const entry = timeline.find(item => item.date === date && item.category === category);
+                    return entry ? entry.count : 0;
+                }),
+                backgroundColor: colors[index],
+                borderColor: colors[index],
+                fill: false
+            }));
+            
+            if (categoryChart) categoryChart.destroy();
+            
+            categoryChart = new Chart(document.getElementById('categoryChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+        }
+
+        async function updateTrends(startDate, endDate) {
+            const response = await fetch(`/api/trends?start_date=${startDate}&end_date=${endDate}`);
+            const trends = await response.json();
+            
+            const trendsList = document.getElementById('trendsList');
+            trendsList.innerHTML = trends.map(trend => `
+                <li class="flex justify-between items-center">
+                    <span class="font-medium">${trend.topic}</span>
+                    <span class="bg-gray-100 px-2 py-1 rounded">
+                        ${trend.count} mentions
+                    </span>
+                </li>
+            `).join('');
+        }
+
+        async function updateTweets() {
+            const sentiment = document.getElementById('sentimentFilter').value;
+            const category = document.getElementById('categoryFilter').value;
+            
+            const response = await fetch(`/api/tweets?sentiment=${sentiment}&category=${category}`);
+            const tweets = await response.json();
+            
+            const tweetsList = document.getElementById('tweetsList');
+            tweetsList.innerHTML = tweets.map(tweet => `
+                <div class="border-b pb-4">
+                    <div class="flex justify-between mb-2">
+                        <span class="font-bold">${tweet.author}</span>
+                        <span class="text-gray-500">${new Date(tweet.timestamp).toLocaleString()}</span>
+                    </div>
+                    <p class="mb-2">${tweet.text}</p>
+                    <div class="flex gap-2 text-sm">
+                        <span class="bg-blue-100 px-2 py-1 rounded">${tweet.sentiment}</span>
+                        <span class="bg-green-100 px-2 py-1 rounded">${tweet.category}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Word Cloud for Follow Recommendations
+        async function createWordCloud() {
+            const response = await fetch('/api/recommendations');
+            const accounts = await response.json();
+            
+            const words = accounts.map(account => ({
+                text: account.username,
+                size: Math.random() * 30 + 10 // Random size between 10 and 40
+            }));
+            
+            const layout = d3.layout.cloud()
+                .size([500, 250])
+                .words(words)
+                .padding(5)
+                .rotate(() => (~~(Math.random() * 2) * 90))
+                .fontSize(d => d.size)
+                .on("end", draw);
+            
+            layout.start();
+            
+            function draw(words) {
+                d3.select("#wordCloud").select("svg").remove();
+                
+                d3.select("#wordCloud")
+                    .append("svg")
+                    .attr("width", layout.size()[0])
+                    .attr("height", layout.size()[1])
+                    .append("g")
+                    .attr("transform", `translate(${layout.size()[0]/2},${layout.size()[1]/2})`)
+                    .selectAll("text")
+                    .data(words)
+                    .enter()
+                    .append("text")
+                    .style("font-size", d => `${d.size}px`)
+                    .style("fill", (d, i) => colors[i % colors.length])
+                    .attr("text-anchor", "middle")
+                    .attr("transform", d => `translate(${[d.x, d.y]})rotate(${d.rotate})`)
+                    .text(d => d.text);
+            }
+        }
+
+        // Initial word cloud creation
+        createWordCloud();
+    </script>
+</body>
+</html>
