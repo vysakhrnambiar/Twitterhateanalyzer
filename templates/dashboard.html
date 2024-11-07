@@ -17,17 +17,35 @@
         <!-- Header -->
         <h1 class="text-3xl font-bold mb-8">Twitter Analytics Dashboard</h1>
 
-        <!-- Date Range Selection -->
-        <div class="mb-8 bg-white p-4 rounded-lg shadow">
-            <h2 class="text-xl font-semibold mb-4">Date Range Selection</h2>
-            <div class="flex gap-4">
-                <input type="date" id="startDate" class="border p-2 rounded">
-                <input type="date" id="endDate" class="border p-2 rounded">
-                <button onclick="updateCharts()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                    Update
-                </button>
+  <!-- Date Range and Stats Section -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+    <!-- Date Range Selection -->
+    <div class="bg-white p-4 rounded-lg shadow">
+        <h2 class="text-xl font-semibold mb-4">Date Range Selection</h2>
+        <div class="flex gap-4">
+            <input type="date" id="startDate" class="border p-2 rounded">
+            <input type="date" id="endDate" class="border p-2 rounded">
+            <button onclick="updateCharts()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                Update
+            </button>
+        </div>
+    </div>
+
+    <!-- Tweet Stats -->
+    <div class="bg-white p-4 rounded-lg shadow">
+        <h2 class="text-xl font-semibold mb-4">Tweet Statistics</h2>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <h3 class="text-sm font-semibold text-gray-600">Total Tweets</h3>
+                <p id="totalTweets" class="text-2xl font-bold text-blue-600">-</p>
+            </div>
+            <div>
+                <h3 class="text-sm font-semibold text-gray-600">Last 24 Hours</h3>
+                <p id="recentTweets" class="text-2xl font-bold text-green-600">-</p>
             </div>
         </div>
+    </div>
+</div>
 
         <!-- Sentiment Analysis Section -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
@@ -56,8 +74,7 @@
                 <canvas id="categoryChart"></canvas>
             </div>
         </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <!-- Trends Section -->
             <div class="bg-white p-4 rounded-lg shadow">
                 <h2 class="text-xl font-semibold mb-4">Trending Topics</h2>
@@ -70,7 +87,6 @@
                 <div id="wordCloud" class="h-64"></div>
             </div>
         </div>
-
         <!-- Tweets Section -->
         <div class="bg-white p-4 rounded-lg shadow">
             <h2 class="text-xl font-semibold mb-4">Recent Tweets</h2>
@@ -95,18 +111,76 @@
             '#FF9F40', '#FF6384', '#C9CBCF', '#7BC8A4', '#E8C3B9'
         ];
 
-        // Initialize date inputs with last 30 days
-        window.onload = function() {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(start.getDate() - 30);
+            window.onload = function() {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(start.getDate() - 30);
+                
+                document.getElementById('startDate').value = start.toISOString().split('T')[0];
+                document.getElementById('endDate').value = end.toISOString().split('T')[0];
+                
+                initializeFilters();
+                updateCharts();
+                updateTweetStats();
+                startAutoRefresh();
+                
+                // Regular updates for real-time stats (every 5 minutes)
+                setInterval(updateTweetStats, 10000);
+            };
+
+        // Enhanced version of your stats update code
+        async function updateTweetStats() {
+            try {
+                const response = await fetch('/api/stats/total_tweets');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                
+                // Update stats with animation
+                animateNumber('totalTweets', data.total_tweets);
+                animateNumber('recentTweets', data.last_24h);
+                
+                // Update last refresh time
+                const timeElement = document.getElementById('lastRefreshTime');
+                if (timeElement) {
+                    timeElement.textContent = new Date().toLocaleTimeString();
+                }
+            } catch (error) {
+                console.error('Error fetching tweet stats:', error);
+                // Show error message to user
+                const errorElement = document.getElementById('statsError');
+                if (errorElement) {
+                    errorElement.textContent = 'Failed to update stats. Will retry...';
+                    errorElement.classList.remove('hidden');
+                    setTimeout(() => errorElement.classList.add('hidden'), 3000);
+                }
+            }
+        }
+
+        // Animate number changes
+        function animateNumber(elementId, target) {
+            const element = document.getElementById(elementId);
+            if (!element) return;
             
-            document.getElementById('startDate').value = start.toISOString().split('T')[0];
-            document.getElementById('endDate').value = end.toISOString().split('T')[0];
+            const start = parseInt(element.textContent.replace(/,/g, '')) || 0;
+            const duration = 1000; // 1 second animation
+            const stepTime = 20; // Update every 20ms
+            const steps = duration / stepTime;
+            const increment = (target - start) / steps;
+            let current = start;
+            let step = 0;
             
-            initializeFilters();
-            updateCharts();
-        };
+            const animation = setInterval(() => {
+                step++;
+                current += increment;
+                if (step >= steps) {
+                    clearInterval(animation);
+                    current = target;
+                }
+                element.textContent = Math.round(current).toLocaleString();
+            }, stepTime);
+        }
 
         async function initializeFilters() {
             const response = await fetch('/api/filters');
@@ -265,72 +339,134 @@
             `).join('');
         }
 
-        async function updateTweets() {
-            const sentiment = document.getElementById('sentimentFilter').value;
-            const category = document.getElementById('categoryFilter').value;
-            
-            const response = await fetch(`/api/tweets?sentiment=${sentiment}&category=${category}`);
-            const tweets = await response.json();
-            
-            const tweetsList = document.getElementById('tweetsList');
-            tweetsList.innerHTML = tweets.map(tweet => `
-                <div class="border-b pb-4">
-                    <div class="flex justify-between mb-2">
-                        <span class="font-bold">${tweet.author}</span>
-                        <span class="text-gray-500">${new Date(tweet.timestamp).toLocaleString()}</span>
-                    </div>
-                    <p class="mb-2">${tweet.text}</p>
-                    <div class="flex gap-2 text-sm">
-                        <span class="bg-blue-100 px-2 py-1 rounded">${tweet.sentiment}</span>
-                        <span class="bg-green-100 px-2 py-1 rounded">${tweet.category}</span>
-                    </div>
-                </div>
-            `).join('');
-        }
+     async function updateTweets() {
+    const sentiment = document.getElementById('sentimentFilter').value;
+    const category = document.getElementById('categoryFilter').value;
+    
+    const response = await fetch(`/api/tweets?sentiment=${sentiment}&category=${category}`);
+    const tweets = await response.json();
+    
+    const tweetsList = document.getElementById('tweetsList');
+    tweetsList.innerHTML = tweets.map(tweet => `
+        <a href="${tweet.url}" target="_blank" class="block border-b pb-4 hover:bg-gray-50 cursor-pointer">
+            <div class="flex justify-between mb-2">
+                <span class="font-bold">${tweet.author}</span>
+                <span class="text-gray-500">${new Date(tweet.timestamp).toLocaleString()}</span>
+            </div>
+            <p class="mb-2">${tweet.text}</p>
+            <div class="flex gap-2 text-sm">
+                <span class="bg-blue-100 px-2 py-1 rounded">${tweet.sentiment}</span>
+                <span class="bg-green-100 px-2 py-1 rounded">${tweet.category}</span>
+            </div>
+        </a>
+    `).join('');
+}
 
-        // Word Cloud for Follow Recommendations
-        async function createWordCloud() {
-            const response = await fetch('/api/recommendations');
-            const accounts = await response.json();
+async function createWordCloud() {
+    const response = await fetch('/api/recommendations');
+    const accounts = await response.json();
+    
+    const words = accounts.map(account => ({
+        text: account.username,
+        size: Math.random() * 30 + 10, // Random size between 10 and 40
+        url: `https://twitter.com/${account.username}` // Add URL for each username
+    }));
+    
+    const layout = d3.layout.cloud()
+        .size([500, 250])
+        .words(words)
+        .padding(5)
+        .rotate(() => (~~(Math.random() * 2) * 90))
+        .fontSize(d => d.size)
+        .on("end", draw);
+    
+    layout.start();
+    
+    function draw(words) {
+        d3.select("#wordCloud").select("svg").remove();
+        
+        // Create the SVG container
+        const svg = d3.select("#wordCloud")
+            .append("svg")
+            .attr("width", layout.size()[0])
+            .attr("height", layout.size()[1]);
             
-            const words = accounts.map(account => ({
-                text: account.username,
-                size: Math.random() * 30 + 10 // Random size between 10 and 40
-            }));
+        // Add the main group element
+        const g = svg.append("g")
+            .attr("transform", `translate(${layout.size()[0]/2},${layout.size()[1]/2})`);
             
-            const layout = d3.layout.cloud()
-                .size([500, 250])
-                .words(words)
-                .padding(5)
-                .rotate(() => (~~(Math.random() * 2) * 90))
-                .fontSize(d => d.size)
-                .on("end", draw);
+        // Create groups for each word
+        const wordGroups = g.selectAll("g")
+            .data(words)
+            .enter()
+            .append("g")
+            .attr("transform", d => `translate(${[d.x, d.y]})rotate(${d.rotate})`)
+            .style("cursor", "pointer");
+        
+        // Add links
+        wordGroups.append("a")
+            .attr("xlink:href", d => d.url)
+            .attr("target", "_blank")
+            .attr("rel", "noopener noreferrer")
+            .append("text")
+            .style("font-size", d => `${d.size}px`)
+            .style("fill", (d, i) => colors[i % colors.length])
+            .attr("text-anchor", "middle")
+            .text(d => d.text)
+            .style("user-select", "none") // Prevent text selection during drag
+            .style("transition", "opacity 0.2s")
+            .style("opacity", 1)
+            .on("mouseover", function() {
+                d3.select(this).style("opacity", 0.7);
+            })
+            .on("mouseout", function() {
+                d3.select(this).style("opacity", 1);
+            });
+        
+        // Add drag behavior
+        const drag = d3.drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended);
             
-            layout.start();
-            
-            function draw(words) {
-                d3.select("#wordCloud").select("svg").remove();
-                
-                d3.select("#wordCloud")
-                    .append("svg")
-                    .attr("width", layout.size()[0])
-                    .attr("height", layout.size()[1])
-                    .append("g")
-                    .attr("transform", `translate(${layout.size()[0]/2},${layout.size()[1]/2})`)
-                    .selectAll("text")
-                    .data(words)
-                    .enter()
-                    .append("text")
-                    .style("font-size", d => `${d.size}px`)
-                    .style("fill", (d, i) => colors[i % colors.length])
-                    .attr("text-anchor", "middle")
-                    .attr("transform", d => `translate(${[d.x, d.y]})rotate(${d.rotate})`)
-                    .text(d => d.text);
-            }
+        wordGroups.call(drag);
+        
+        // Drag functions
+        function dragstarted(event, d) {
+            d3.select(this).raise();
+            d3.select(this).attr("data-x", d3.select(this).attr("transform"));
         }
+        
+        function dragged(event, d) {
+            const currentTransform = d3.select(this).attr("transform");
+            const currentRotate = currentTransform.match(/rotate\(([-\d.]+)\)/);
+            const rotation = currentRotate ? currentRotate[1] : 0;
+            
+            // Get the current group's bounding box
+            const bbox = this.getBBox();
+            
+            // Calculate bounds to keep words within SVG
+            const minX = -layout.size()[0]/2 + bbox.width/2;
+            const maxX = layout.size()[0]/2 - bbox.width/2;
+            const minY = -layout.size()[1]/2 + bbox.height/2;
+            const maxY = layout.size()[1]/2 - bbox.height/2;
+            
+            // Constrain the drag within bounds
+            const x = Math.min(maxX, Math.max(minX, event.x));
+            const y = Math.min(maxY, Math.max(minY, event.y));
+            
+            d3.select(this)
+                .attr("transform", `translate(${x},${y})rotate(${rotation})`);
+        }
+        
+        function dragended(event, d) {
+            // Optional: Add any cleanup or final positioning logic here
+        }
+    }
+}
 
-        // Initial word cloud creation
-        createWordCloud();
+// Initial word cloud creation
+createWordCloud();
     </script>
 </body>
 </html>
